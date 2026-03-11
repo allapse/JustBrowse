@@ -7,7 +7,7 @@ from PyQt6.QtGui import QPainter, QPolygon
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtQuick import QQuickWindow
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import psutil, GPUtil
 
 import sys
@@ -86,13 +86,13 @@ class JustBrowse(QWidget):
         title_label.mouseMoveEvent = mouseMoveEvent
         
         # 最小化按鈕
-        minimize_btn = QPushButton("_")
+        minimize_btn = QPushButton("-")
         minimize_btn.setFixedSize(20, 20)
         minimize_btn.setStyleSheet(f"background: rgba(0,0,255,0.05); color: {self.color_font_sys}; border: none; border-radius: 7px;")
         minimize_btn.clicked.connect(self.showMinimized)
 
         # 置頂開關
-        self.toggle_btn = QPushButton("⌤")
+        self.toggle_btn = QPushButton("⌅")
         self.toggle_btn.setFixedSize(20, 20)
         self.toggle_btn.setStyleSheet(f"background: rgba(0,255,0,0.05); color: {self.color_font_sys}; border: none; border-radius: 7px;")
         self.toggle_btn.clicked.connect(self.toggle_on_top)
@@ -129,7 +129,7 @@ class JustBrowse(QWidget):
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("輸入網址，例如 https://example.com")
         self.url_input.setText("https://pypi.org/project/beautifulsoup4/")
-        self.url_input.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_font_sys}; border-radius: 3px;")
+        self.url_input.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_font_sys}; border-radius: 3px; padding: 1px;")
         button_layout.addWidget(self.url_input)
         
         self.fetch_button = QPushButton("↵")
@@ -144,8 +144,8 @@ class JustBrowse(QWidget):
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
         self.tabs.setStyleSheet(f"""
-            QTabBar::tab {{background: {self.color_bg_sys}; color: {self.color_font_sys}; border-radius: 1px; padding: 5px;}}
-            QTabBar::tab:selected {{background: rgba(0,255,0,0.05); border-radius: 1px;}}
+            QTabBar::tab {{background: rgba(200,200,0,0.05); color: {self.color_font_sys}; border-radius: 7px; padding: 3px; min-width: 100px}}
+            QTabBar::tab:selected {{background: {self.color_bg_sys}; border-radius: 1px;}}
             QTabWidget::pane {{background: transparent; border-radius: 1px;}}
         """)
         
@@ -173,8 +173,9 @@ class JustBrowse(QWidget):
         self.setLayout(layout)
         
         # 狀態列 Label
-        self.status_label = QLabel(" ∇ System Info")
-        self.status_label.setStyleSheet(f"background: {self.color_bg_sys}; color: rgba(127,127,127,0.9); border-radius: 3px;")
+        self.status_text = " ▹ System Info"
+        self.status_label = QLabel(self.status_text)
+        self.status_label.setStyleSheet(f"background: {self.color_bg_sys}; color: rgba(127,127,127,0.9); border-radius: 3px; padding: 1px;")
         self.status_label.mouseDoubleClickEvent = self.toggle_status_label
         layout.addWidget(self.status_label)
         
@@ -186,9 +187,10 @@ class JustBrowse(QWidget):
             current_tab = self.tabs.currentIndex()
             
             if current_tab == 0:  # Text tab
-                response = requests.get(url, timeout=10)
+                headers = {"User-Agent": "JustBrowse/1.0 (https://github.com/allapse/JustBrowse)"}
+                response = requests.get(url, headers=headers, timeout=10)
                 soup = BeautifulSoup(response.text, "lxml")
-                color = "rgba(0,127,0,0.5)"
+                color = "rgba(0,127,0,0.7)"
 
                 content = f'<h2 style="color:{color};">{soup.title.string if soup.title else "無標題"}</h2>'
                 for p in soup.find_all("p"):
@@ -198,8 +200,9 @@ class JustBrowse(QWidget):
                 for a in soup.find_all("a", href=True):
                     link = a["href"]
                     text = a.get_text() or link
-                    per = 10 + round(15/(2 + round(len(text) / 3)))
-                    color = "rgba(0,0,255,0.5)" if per > 14 else "rgba(127,127,127,0.9)"
+                    per = 10 + round(15/(2 + round(len(text) / 7)))
+                    #color = "rgba(0,0,255,0.5)" if per > 14 else "rgba(127,127,127,0.9)"
+                    color = "rgba(127,127,127,0.9)" if color=="rgba(255,0,0,0.5)" else "rgba(255,0,0,0.5)"
                     content += f'<span style="white-space: pre;"><a href="{link}" style="color:{color}; font-size:{per}px;">{text}</a>       </span>'
                 
                 self.text_browser.setHtml(content)
@@ -219,8 +222,17 @@ class JustBrowse(QWidget):
 
     def handle_link_click(self, url):
         new_url = url.toString()
-        self.url_input.setText(new_url)
-        self.fetch_page(new_url)
+        
+        # 從目前輸入框的 URL 判斷 base
+        current_url = self.url_input.text()
+        parsed = urlparse(current_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        
+        # 拼接完整 URL
+        full_url = urljoin(base_url, new_url)
+        
+        self.url_input.setText(full_url)
+        self.fetch_page(full_url)
 
     def go_back(self):
         if self.current_index > 0:
@@ -251,11 +263,11 @@ class JustBrowse(QWidget):
         if self.always_on_top:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)  # 關掉置頂
             self.always_on_top = False
-            self.toggle_btn.setText("⌵")              # 顯示 Free
+            self.toggle_btn.setText("⌆")              # 顯示 Free
         else:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)  # 開啟置頂
             self.always_on_top = True
-            self.toggle_btn.setText("⌤")              # 顯示 Free
+            self.toggle_btn.setText("⌅")              # 顯示 Free
         self.show()  # 重新顯示以套用旗標
         
     def enterEvent(self, event):
@@ -324,7 +336,7 @@ class JustBrowse(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.status_expanded:
                 # 收闔：顯示固定文字，停止更新
-                self.status_label.setText(" ∇ System Info")
+                self.status_label.setText(self.status_text)
                 self.timer.stop()
                 self.status_expanded = False
             else:
