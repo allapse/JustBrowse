@@ -4,6 +4,9 @@
 
 Python 3.13.11
 
+
 用Copilot寫的
-瀏覽Copilot時
-使用Enter只能換行不能送出
+
+卻在瀏覽Copilot時
+
+使用Enter鍵只能換行不能送出
