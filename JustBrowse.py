@@ -8,24 +8,14 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtQuick import QQuickWindow
 from urllib.parse import urljoin, urlparse
-import psutil, GPUtil
-
-import sys
-sys.argv += [
-    "--disable-gpu",
-    "--disable-software-rasterizer",
-    "--disable-direct-composition",
-    "--disable-gpu-compositing"
-]
+import psutil, GPUtil, time
 
 class JustBrowse(QWidget):
     def __init__(self):
         super().__init__()
         
-        QQuickWindow.setSceneGraphBackend("software")
-        
         self.setWindowTitle("JustBrowse")
-        self.resize(250, 375)
+        self.resize(515, 620)
         self.opacity_sys = 0.3
         self.setWindowOpacity(self.opacity_sys)
         # 建立動畫物件，綁定到視窗的 opacity 屬性
@@ -33,6 +23,14 @@ class JustBrowse(QWidget):
         self.anim.setDuration(300)  # 動畫時間 (毫秒)
         
         self.status_expanded = False 
+        
+        self.color_text_sys = "rgba(170,170,170,0.5)"
+        self.color_text_app = "rgba(127,127,127,1.0)"
+        self.color_bg_sys = "rgba(127,127,127,0.05)"
+        
+        
+        self.last_net = psutil.net_io_counters()
+        self.last_time = time.time()
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_status)
         if self.status_expanded:
@@ -55,13 +53,10 @@ class JustBrowse(QWidget):
 
         layout = QVBoxLayout()
         
-        self.color_font_sys = "rgba(127,127,127,0.5)"
-        self.color_bg_sys = "rgba(127,127,127,0.1)"
-        
         # 在 top_layout 裡加一個透明的拖曳區
         title_label = QLabel(" ⛶")
         title_label.setFixedHeight(20)  # 高度跟關閉按鈕一致
-        title_label.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_font_sys}; border-radius: 3px;")  # 幾乎透明
+        title_label.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 3px;")  # 幾乎透明
         
         # 讓 title_label 可以拖曳視窗
         def mousePressEvent(event):
@@ -88,19 +83,19 @@ class JustBrowse(QWidget):
         # 最小化按鈕
         minimize_btn = QPushButton("-")
         minimize_btn.setFixedSize(20, 20)
-        minimize_btn.setStyleSheet(f"background: rgba(0,0,255,0.05); color: {self.color_font_sys}; border: none; border-radius: 7px;")
+        minimize_btn.setStyleSheet(f"background: rgba(0,0,255,0.05); color: {self.color_text_sys}; border: none; border-radius: 7px;")
         minimize_btn.clicked.connect(self.showMinimized)
 
         # 置頂開關
         self.toggle_btn = QPushButton("⌅")
         self.toggle_btn.setFixedSize(20, 20)
-        self.toggle_btn.setStyleSheet(f"background: rgba(0,255,0,0.05); color: {self.color_font_sys}; border: none; border-radius: 7px;")
+        self.toggle_btn.setStyleSheet(f"background: rgba(0,255,0,0.05); color: {self.color_text_sys}; border: none; border-radius: 7px;")
         self.toggle_btn.clicked.connect(self.toggle_on_top)
         
         # 關閉按鈕
         close_btn = QPushButton("×")
         close_btn.setFixedSize(20, 20)
-        close_btn.setStyleSheet(f"background: rgba(255,0,0,0.05); color: {self.color_font_sys}; border-radius: 7px;")
+        close_btn.setStyleSheet(f"background: rgba(255,0,0,0.05); color: {self.color_text_sys}; border-radius: 7px;")
         close_btn.clicked.connect(self.close)
 
         # 標題列排版
@@ -116,26 +111,26 @@ class JustBrowse(QWidget):
         self.back_button = QPushButton("←")
         self.back_button.setFixedSize(20, 20)
         self.back_button.clicked.connect(self.go_back)
-        self.back_button.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_font_sys}; border-radius: 7px;")
+        self.back_button.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 7px;")
         button_layout.addWidget(self.back_button)
 
         self.forward_button = QPushButton("→")
         self.forward_button.setFixedSize(20, 20)
         self.forward_button.clicked.connect(self.go_forward)
-        self.forward_button.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_font_sys}; border-radius: 7px;")
+        self.forward_button.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 7px;")
         button_layout.addWidget(self.forward_button)
         
         # URL輸入框
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("輸入網址，例如 https://example.com")
-        self.url_input.setText("https://pypi.org/project/beautifulsoup4/")
-        self.url_input.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_font_sys}; border-radius: 3px; padding: 1px;")
+        self.url_input.setText("https://github.com/allapse/JustBrowse")
+        self.url_input.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 3px; padding: 1px;")
         button_layout.addWidget(self.url_input)
         
         self.fetch_button = QPushButton("↵")
         self.fetch_button.setFixedSize(20, 20)
         self.fetch_button.clicked.connect(self.fetch_page)
-        self.fetch_button.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_font_sys}; border-radius: 7px;")
+        self.fetch_button.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 7px;")
         button_layout.addWidget(self.fetch_button)
 
         layout.addLayout(button_layout)
@@ -144,7 +139,7 @@ class JustBrowse(QWidget):
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
         self.tabs.setStyleSheet(f"""
-            QTabBar::tab {{background: rgba(200,200,0,0.05); color: {self.color_font_sys}; border-radius: 7px; padding: 3px; min-width: 100px}}
+            QTabBar::tab {{background: rgba(200,200,0,0.05); color: {self.color_text_sys}; border-radius: 7px; padding: 3px; min-width: 100px}}
             QTabBar::tab:selected {{background: {self.color_bg_sys}; border-radius: 1px;}}
             QTabWidget::pane {{background: transparent; border-radius: 1px;}}
         """)
@@ -159,25 +154,22 @@ class JustBrowse(QWidget):
         
         # 第二個分頁：QWebEngineView
         self.web_view = QWebEngineView()
-        self.web_view.setUrl(QUrl("https://copilot.microsoft.com/"))
-        effect = QGraphicsOpacityEffect()
-        effect.setOpacity(0.7)  # 0.0 ~ 1.0
-        self.web_view.setGraphicsEffect(effect)
+        self.web_view.setUrl(QUrl("https://allapse.github.io/allgivz/givez.html"))
         self.web_view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True)
         self.tabs.addTab(self.web_view, "Web")
         
+        # 狀態列 Label
+        self.status_text = "⛗"
+        self.status_label = QLabel(self.status_text)
+        self.status_label.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_app}; border-radius: 3px; padding: 1px;")
+        self.status_label.mouseDoubleClickEvent = self.toggle_status_label
+        layout.addWidget(self.status_label)
+        
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setLayout(layout)
-        
-        # 狀態列 Label
-        self.status_text = " ▹ System Info"
-        self.status_label = QLabel(self.status_text)
-        self.status_label.setStyleSheet(f"background: {self.color_bg_sys}; color: rgba(127,127,127,0.9); border-radius: 3px; padding: 1px;")
-        self.status_label.mouseDoubleClickEvent = self.toggle_status_label
-        layout.addWidget(self.status_label)
         
     def fetch_page(self, url=None, add_to_history=True):
         if not url:
@@ -190,19 +182,19 @@ class JustBrowse(QWidget):
                 headers = {"User-Agent": "JustBrowse/1.0 (https://github.com/allapse/JustBrowse)"}
                 response = requests.get(url, headers=headers, timeout=10)
                 soup = BeautifulSoup(response.text, "lxml")
-                color = "rgba(0,127,0,0.7)"
+                color = "rgba(0,127,0,0.8)"
 
                 content = f'<h2 style="color:{color};">{soup.title.string if soup.title else "無標題"}</h2>'
                 for p in soup.find_all("p"):
                     if len(p.get_text()) > 0:
-                        color = "rgba(127,127,127,0.9)" if color=="rgba(0,127,0,0.7)" else "rgba(0,127,0,0.7)"
+                        color = "rgba(0,127,0,0.8)" if color==self.color_text_app else self.color_text_app
                         content += f'<p style="color:{color};">{p.get_text()}</p>'
                 for a in soup.find_all("a", href=True):
                     link = a["href"]
                     text = a.get_text() or link
                     per = 10 + round(15/(2 + round(len(text) / 7)))
                     #color = "rgba(0,0,255,0.5)" if per > 14 else "rgba(127,127,127,0.9)"
-                    color = "rgba(127,127,127,0.9)" if color=="rgba(255,0,0,0.5)" else "rgba(255,0,0,0.5)"
+                    color = "rgba(255,0,0,0.5)" if color==self.color_text_app else self.color_text_app
                     content += f'<span style="white-space: pre;"><a href="{link}" style="color:{color}; font-size:{per}px;">{text}</a>       </span>'
                 
                 self.text_browser.setHtml(content)
@@ -263,23 +255,23 @@ class JustBrowse(QWidget):
         if self.always_on_top:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)  # 關掉置頂
             self.always_on_top = False
-            self.toggle_btn.setText("⌆")              # 顯示 Free
+            self.toggle_btn.setText("⌆")
         else:
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)  # 開啟置頂
             self.always_on_top = True
-            self.toggle_btn.setText("⌅")              # 顯示 Free
+            self.toggle_btn.setText("⌅")
         self.show()  # 重新顯示以套用旗標
         
     def enterEvent(self, event):
-        # 滑鼠移入 → 漸變到 1.0
+        # 滑鼠移入 → 漸變到
         self.anim.stop()
         self.anim.setStartValue(self.windowOpacity())
-        self.anim.setEndValue(1.0)
+        self.anim.setEndValue(0.9)
         self.anim.start()
         event.accept()
 
     def leaveEvent(self, event):
-        # 滑鼠移出 → 漸變到 0.3
+        # 滑鼠移出 → 漸變
         self.anim.stop()
         self.anim.setStartValue(self.windowOpacity())
         self.anim.setEndValue(self.opacity_sys)
@@ -287,25 +279,35 @@ class JustBrowse(QWidget):
         event.accept()
         
     def update_status(self):
-        # CPU 使用率 (非阻塞)
+        # CPU 使用率
         cpu = psutil.cpu_percent(interval=0)
 
         # RAM 使用率
         mem = psutil.virtual_memory().percent
 
-        # GPU 使用率 (只取第一張卡)
+        # GPU 使用率
         gpus = GPUtil.getGPUs()
         gpu_info = ""
         if gpus:
             gpu = gpus[0]
             gpu_info = f"[GPU]: {gpu.load*100:.1f}%  |  {gpu.temperature}°C  |  {gpu.memoryUsed/1024:.1f}/{gpu.memoryTotal/1024:.1f}GB"
 
-        # 網路流量 (bytes → MB)
-        net = psutil.net_io_counters()
-        net_info = f"[NET]: ↓{net.bytes_recv/1024/1024/1024:.1f}GB ↑{net.bytes_sent/1024/1024/1024:.1f}GB"
+        # 網路瞬間速度
+        now_net = psutil.net_io_counters()
+        now_time = time.time()
+        interval = now_time - self.last_time
 
-        # 更新到狀態列或 Label
+        recv_speed = (now_net.bytes_recv - self.last_net.bytes_recv) / 1024 / 1024 / interval  # MB/s
+        sent_speed = (now_net.bytes_sent - self.last_net.bytes_sent) / 1024 / 1024 / interval  # MB/s
+
+        net_info = f"[NET]: ↓{recv_speed:.2f} MB/s ↑{sent_speed:.2f} MB/s"
+
+        # 更新狀態
         self.status_label.setText(f" [CPU]: {cpu}%  |  [RAM]: {mem}%\r\n {gpu_info}\r\n {net_info}")
+
+        # 更新基準值
+        self.last_net = now_net
+        self.last_time = now_time
         
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -341,6 +343,8 @@ class JustBrowse(QWidget):
                 self.status_expanded = False
             else:
                 # 展開：恢復更新
+                self.last_net = psutil.net_io_counters()
+                self.last_time = time.time()
                 self.timer.start(2000)
                 self.update_status()
                 self.status_expanded = True      
