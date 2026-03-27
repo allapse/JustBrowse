@@ -11,6 +11,8 @@ default:
   url_text: "https://github.com/allapse/JustBrowse"
   url_web: "https://allapse.github.io/allgivz/givez.html"
   status_expanded: False
+  force_rst: False
+  dock_parent_cmd: False
   always_on_top: True
   animation_duration: 300
   status_rate: 2000
