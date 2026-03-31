@@ -5,7 +5,7 @@ window:
   button_size: 25
   opacity_focus: 0.9
   opacity_fade: 0.3
-  opacity_bg: 0.05
+  opacity_bg: 0.1
 
 default:
   url_text: "https://github.com/allapse/JustBrowse"
@@ -14,10 +14,11 @@ default:
   force_rst: False
   dock_parent_cmd: False
   always_on_top: True
+  bg_lock: False
   animation_duration: 300
   status_rate: 2000
 
 colors:
-  text_sys: "170,170,170,0.5"
+  text_sys: "170,170,170,0.7"
   text_app: "127,127,127,1.0"
-  bg_sys: "127,127,127"
+  bg_sys: "170,170,170"

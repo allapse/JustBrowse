@@ -3,8 +3,9 @@ import yaml
 import argparse
 import platform
 from PyQt6.QtWidgets import QApplication, QWidget, QSplashScreen
-from PyQt6.QtCore import Qt, QTimer, QUrl, QPoint
+from PyQt6.QtCore import Qt, QTimer, QUrl, QPoint, QPointF
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtGui import QPainter, QPolygon, QPixmap, QColor, QWindow, QBrush
 
 parser = argparse.ArgumentParser(description="JustBrowse with config")
@@ -25,7 +26,7 @@ class JustBrowse(QWidget):
         import psutil, GPUtil, time
         from PyQt6.QtWidgets import QVBoxLayout, QLineEdit, QPushButton, QTextBrowser, QHBoxLayout, QLabel, QSizePolicy, QTabWidget, QFrame, QProgressBar, QListWidget, QGraphicsOpacityEffect, QToolButton
         from PyQt6.QtCore import QPropertyAnimation
-        from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage
+        from PyQt6.QtWebEngineCore import QWebEngineSettings
         from PyQt6.QtQuick import QQuickWindow
         
         self.psutil = psutil
@@ -50,6 +51,8 @@ class JustBrowse(QWidget):
         self.status_expanded = CONFIG["default"]["status_expanded"] 
         self.force_rst = CONFIG["default"]["force_rst"] 
         self.dock_parent_cmd = CONFIG["default"]["dock_parent_cmd"] 
+        self.always_on_top = CONFIG["default"]["always_on_top"] 
+        self.bg_lock = CONFIG["default"]["bg_lock"] 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # 允許接收焦點
         
         # 使用配置檔的顏色
@@ -67,14 +70,13 @@ class JustBrowse(QWidget):
         
         self.history = []   # 儲存瀏覽歷史
         self.history_index = -1
-        self.always_on_top = CONFIG["default"]["always_on_top"] 
-
+        
         layout = QVBoxLayout()
         
         self.button_size = max(20, min(CONFIG["window"]["button_size"], 40));
         
         # 在 top_layout 裡加一個透明的拖曳區
-        self.title_label = QLabel(" ⛶")
+        self.title_label = QLabel("  ⛶")
         self.title_label.setFixedHeight(self.button_size)  # 高度跟關閉按鈕一致
         self.title_label.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 3px;")  # 幾乎透明
         
@@ -109,6 +111,21 @@ class JustBrowse(QWidget):
         self.title_label.mousePressEvent = mousePressEvent
         self.title_label.mouseMoveEvent = mouseMoveEvent
         
+        # 背景鎖定按鈕
+        self.bg_lock_btn = QPushButton("◒" if self.bg_lock else "◓")
+        self.bg_lock_btn.setFixedSize(self.button_size, self.button_size)
+        self.bg_lock_btn.setStyleSheet(f"background: rgba(255,255,0,{self.opacity_bg}); color: {self.color_text_sys}; border: none; border-radius: 7px;")
+        
+        def on_bg_lock_clicked():
+            modifiers = QApplication.keyboardModifiers()
+            if modifiers & Qt.KeyboardModifier.ControlModifier:
+                for w in windows:
+                    w.toggle_bg_lock()
+            else:
+                self.toggle_bg_lock()
+                
+        self.bg_lock_btn.clicked.connect(on_bg_lock_clicked)
+        
         # 最小化按鈕
         minimize_btn = QPushButton("-")
         minimize_btn.setFixedSize(self.button_size, self.button_size)
@@ -127,7 +144,7 @@ class JustBrowse(QWidget):
         minimize_btn.clicked.connect(on_minimize_clicked)
 
         # 置頂開關
-        self.toggle_btn = QPushButton("⌅")
+        self.toggle_btn = QPushButton("⌅" if self.always_on_top else "⌆")
         self.toggle_btn.setFixedSize(self.button_size, self.button_size)
         self.toggle_btn.setStyleSheet(f"background: rgba(0,255,0,{self.opacity_bg}); color: {self.color_text_sys}; border: none; border-radius: 7px;")
         
@@ -149,7 +166,7 @@ class JustBrowse(QWidget):
         def on_close_clicked():
             modifiers = QApplication.keyboardModifiers()
             if modifiers & Qt.KeyboardModifier.ControlModifier:
-                for w in windows:
+                for w in list(windows):
                     w.close()
             else:
                 focus_window.close()
@@ -159,6 +176,7 @@ class JustBrowse(QWidget):
         # 標題列排版
         top_layout = QHBoxLayout()
         top_layout.addWidget(self.title_label)
+        top_layout.addWidget(self.bg_lock_btn)
         top_layout.addWidget(minimize_btn)
         top_layout.addWidget(self.toggle_btn)
         top_layout.addWidget(close_btn)
@@ -175,7 +193,10 @@ class JustBrowse(QWidget):
         self.forward_button = QPushButton("→")
         self.forward_button.setFixedSize(self.button_size, self.button_size)
         self.forward_button.clicked.connect(self.go_forward)
-        self.forward_button.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 7px;")
+        self.forward_button.setStyleSheet(f"""
+            QPushButton {{background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 7px;}}
+            QPushButton:disabled {{background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: {round(self.button_size / 2)}px;}}
+        """)
         button_layout.addWidget(self.forward_button)
         
         # URL輸入框
@@ -189,7 +210,10 @@ class JustBrowse(QWidget):
         self.reload_button = QPushButton("↺")
         self.reload_button.setFixedSize(self.button_size, self.button_size)
         self.reload_button.clicked.connect(self.on_reload_button_clicked)
-        self.reload_button.setStyleSheet(f"background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 7px;")
+        self.reload_button.setStyleSheet(f"""
+            QPushButton {{background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 7px;}}
+            QPushButton:disabled {{background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: {round(self.button_size / 2)}px;}}
+        """)
         button_layout.addWidget(self.reload_button)
         
         self.url_input.returnPressed.connect(self.fetch_page)
@@ -205,13 +229,12 @@ class JustBrowse(QWidget):
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
         self.tabs.setStyleSheet(f"""
-            QTabBar::tab {{background: rgba(220,220,0,{self.opacity_bg}); color: {self.color_text_sys}; border-radius: 7px; padding: 3px; min-width: 100px; min-height: {10 + 0.5 * self.button_size}px;}}
+            QTabBar::tab {{background: rgba(220,220,0,{self.opacity_bg}); color: {self.color_text_sys}; border-radius: 7px; margin-right: 7px; min-width: 100px; min-height: {10 + 0.5 * self.button_size}px;}}
             QTabBar::tab:selected {{background: {self.color_bg_sys}; color: {self.color_text_sys}; border-radius: 1px;}}
             QTabWidget::pane {{background: transparent; border-radius: 1px;}}
             QTabBar::scroller {{background: {self.color_bg_sys}; border: none;}}
             QTabBar QToolButton {{border: none; padding: 4px;}}
         """)
-        self.tabs.currentChanged.connect(self.on_tab_changed)
         tabbar = self.tabs.tabBar()
         buttons = tabbar.findChildren(QToolButton)
 
@@ -231,18 +254,18 @@ class JustBrowse(QWidget):
         """)
         self.text_browser.anchorClicked.connect(self.handle_link_click)
         self.tabs.addTab(self.text_browser, "Text")
-        self.tabs.tabBar().setTabData(self.tabs.indexOf(self.text_browser), "Text")
+        self.tabs.tabBar().setTabData(self.tabs.indexOf(self.text_browser), {"type": "Text", "title": "Text"})
         set_sys_opacity(self.text_browser.verticalScrollBar())
         set_sys_opacity(self.text_browser.horizontalScrollBar())
         
         # 第二個分頁：QWebEngineView
-        self.web_view = QWebEngineView()
+        self.web_view = MyWebView()
         self.web_view.setUrl(QUrl(CONFIG["default"]["url_web"]))
         self.web_view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True)
         self.tabs.addTab(self.web_view, "Web")
-        self.tabs.tabBar().setTabData(self.tabs.indexOf(self.web_view), "Web")
+        self.tabs.tabBar().setTabData(self.tabs.indexOf(self.web_view), {"type": "Web", "title": "Web"})
         self.web_view.loadFinished.connect(self.sync_url_input)
         
         # Html請求分頁: QWebEnginePage
@@ -264,7 +287,7 @@ class JustBrowse(QWidget):
                 }}
             """)
             self.tabs.addTab(self.app_list, "App")
-            self.tabs.tabBar().setTabData(self.tabs.indexOf(self.app_list), "App")
+            self.tabs.tabBar().setTabData(self.tabs.indexOf(self.app_list), {"type": "App", "title": "App"})
             set_sys_opacity(self.app_list.verticalScrollBar())
             set_sys_opacity(self.app_list.horizontalScrollBar())
 
@@ -272,7 +295,7 @@ class JustBrowse(QWidget):
                 if current:
                     data = current.data(Qt.ItemDataRole.UserRole)
                     if data:
-                        current_tab = self.tabs.tabBar().tabData(self.tabs.currentIndex())
+                        current_tab = self.tabs.tabBar().tabData(self.tabs.currentIndex()).get("type")
                         if current_tab == "App":
                             self.url_input.setText(f"hwnd: {data['hwnd']}, pid: {data['pid']}")
             
@@ -288,6 +311,8 @@ class JustBrowse(QWidget):
             self.windows_dock.reload_app_list(self.app_list)
             if self.dock_parent_cmd:
                 self.windows_dock.dock_parent_cmd(self, self.tabs, self.app_list)
+                
+        self.tabs.currentChanged.connect(self.on_tab_changed)
         
         # 狀態列 Label
         status_layout = QHBoxLayout()
@@ -314,11 +339,11 @@ class JustBrowse(QWidget):
                 border: none;
                 border-radius: 2px;
                 background: rgba(0,0,255,{self.opacity_bg});
-                text-align: center;   /* 文字置中 */
-                color: {self.color_text_app};         /* 文字顏色 */
+                text-align: center;
+                color: {self.color_text_app};
             }}
             QProgressBar::chunk {{
-                background-color: {self.color_text_sys};   /* 填滿區塊顏色 */
+                background-color: {self.color_text_sys};
                 border-radius: 2px;
             }}
         """)
@@ -335,11 +360,11 @@ class JustBrowse(QWidget):
                 border: none;
                 border-radius: 2px;
                 background: rgba(0,255,0,{self.opacity_bg});
-                text-align: center;   /* 文字置中 */
-                color: {self.color_text_app};         /* 文字顏色 */
+                text-align: center;
+                color: {self.color_text_app};
             }}
             QProgressBar::chunk {{
-                background-color: {self.color_text_sys};   /* 填滿區塊顏色 */
+                background-color: {self.color_text_sys};
                 border-radius: 2px;
             }}
         """)
@@ -356,11 +381,11 @@ class JustBrowse(QWidget):
                 border: none;
                 border-radius: 2px;
                 background: rgba(255,0,0,{self.opacity_bg});
-                text-align: center;   /* 文字置中 */
-                color: {self.color_text_app};         /* 文字顏色 */
+                text-align: center;
+                color: {self.color_text_app};
             }}
             QProgressBar::chunk {{
-                background-color: {self.color_text_sys};   /* 填滿區塊顏色 */
+                background-color: {self.color_text_sys};
                 border-radius: 2px;
             }}
         """)
@@ -393,7 +418,7 @@ class JustBrowse(QWidget):
             #self.requestPage.runJavaScript("document.body.innerHTML", self.handle_html)
 
     def on_reload_button_clicked(self):
-        current_tab = self.tabs.tabBar().tabData(self.tabs.currentIndex())
+        current_tab = self.tabs.tabBar().tabData(self.tabs.currentIndex()).get("type")
 
         match current_tab:
             case "Text":
@@ -416,8 +441,13 @@ class JustBrowse(QWidget):
             # 判斷目前 Tab
             tab_index = self.tabs.currentIndex()
             current_tab = self.tabs.tabBar().tabData(tab_index)
-            match current_tab:
+            match current_tab.get("type"):
                 case "Text":
+                    current_tab['title'] = url
+                    self.tabs.tabBar().setTabData(tab_index, current_tab)
+                    self.setWindowTitle(url)
+                    
+                    
                     # 更新歷史紀錄
                     if add_to_history:
                         scroll_pos = self.text_browser.verticalScrollBar().value()
@@ -548,9 +578,13 @@ class JustBrowse(QWidget):
         self.text_browser.setHtml(content)
     
     def on_tab_changed(self, index):
-        tab_index = self.tabs.currentIndex()
-        current_tab = self.tabs.tabBar().tabData(tab_index)
-        match current_tab:
+        btn_enable = True
+        current_tab = self.tabs.tabBar().tabData(self.tabs.currentIndex())
+        
+        if not current_tab:
+            return
+            
+        match current_tab.get("type"):
             case "Text":
                 # 假設你有存當前 URL
                 if self.history_index >= 0:
@@ -564,15 +598,25 @@ class JustBrowse(QWidget):
                     self.url_input.setText(f"hwnd: {data['hwnd']}, pid: {data['pid']}")
                 else:
                     self.url_input.setText("")
-            case dict() as data:  # Dock tab
-                if data.get("type") == "Dock":
-                    self.url_input.setText(f"hwnd: {data['hwnd']}, pid: {data['pid']}")
+            case "Dock":
+                self.url_input.setText(f"hwnd: {current_tab['hwnd']}, pid: {current_tab['pid']}")
+                btn_enable = False
+                    
+        self.forward_button.setEnabled(btn_enable)
+        self.reload_button.setEnabled(btn_enable)
+        self.setWindowTitle(current_tab['title'])
             
     def sync_url_input(self):
-        current_tab = self.tabs.tabBar().tabData(self.tabs.currentIndex())
-        if current_tab == "Web":
-            self.url_input.setText(self.web_view.url().toString())
-
+        tab_index = self.tabs.currentIndex()
+        current_tab = self.tabs.tabBar().tabData(tab_index)
+       
+        if current_tab.get("type") == "Web":
+            url = self.web_view.url().toString()
+            current_tab['title'] = url
+            self.tabs.tabBar().setTabData(tab_index, current_tab)
+            self.url_input.setText(url)
+            self.setWindowTitle(url)
+            
     def handle_link_click(self, url):
         from urllib.parse import urljoin, urlparse
         new_url = url.toString()
@@ -604,7 +648,7 @@ class JustBrowse(QWidget):
 
     def go_back(self):
         tab_index = self.tabs.currentIndex()
-        current_tab = self.tabs.tabBar().tabData(tab_index)
+        current_tab = self.tabs.tabBar().tabData(tab_index).get("type")
 
         match current_tab:
             case "Text":
@@ -617,17 +661,16 @@ class JustBrowse(QWidget):
                 self.web_view.back()
             case "App":
                 row = self.app_list.currentRow()
-                if row < self.app_list.count() - 1:
-                    self.app_list.setCurrentRow(row + 1)
-            case dict() as data:  # Dock tab
-                if data.get("type") == "Dock":
-                    widget = self.tabs.widget(tab_index)
-                    self.tabs.removeTab(tab_index)
-                    widget.deleteLater()
-                    QTimer.singleShot(1000, lambda: self.windows_dock.reload_app_list(self.app_list))
+                if row > 0:
+                    self.app_list.setCurrentRow(row - 1)
+            case "Dock":
+                widget = self.tabs.widget(tab_index)
+                self.tabs.removeTab(tab_index)
+                widget.deleteLater()
+                QTimer.singleShot(1000, lambda: self.windows_dock.reload_app_list(self.app_list))
             
     def go_forward(self):
-        current_tab = self.tabs.tabBar().tabData(self.tabs.currentIndex())
+        current_tab = self.tabs.tabBar().tabData(self.tabs.currentIndex()).get("type")
         
         match current_tab:
             case "Text":
@@ -640,8 +683,16 @@ class JustBrowse(QWidget):
                 self.web_view.forward()
             case "App":
                 row = self.app_list.currentRow()
-                if row > 0:
-                    self.app_list.setCurrentRow(row - 1)
+                if row < self.app_list.count() - 1:
+                    self.app_list.setCurrentRow(row + 1)
+
+    def toggle_bg_lock(self):
+        self.bg_lock = not self.bg_lock
+        
+        if self.bg_lock:
+            self.bg_lock_btn.setText("◓")
+        else:
+            self.bg_lock_btn.setText("◒")
 
     def toggle_on_top(self):
         if self.always_on_top:
@@ -757,31 +808,112 @@ class JustBrowse(QWidget):
             self.ram_bar.show()
             self.gpu_bar.show()
             
+    def makeRadialGradient(self, center, radius, alpha):
+        from PyQt6.QtGui import QRadialGradient, QPen
+        
+        g = QRadialGradient(center, radius, center)
+        g.setColorAt(0.6, QColor(255, 255, 0, alpha))
+        g.setColorAt(0.5, QColor(159, 159, 255, round(alpha ** 2)))
+        g.setColorAt(0.3, QColor(255, 255, 0, alpha))
+        g.setColorAt(0.0, QColor(255, 255, 255, alpha))
+        
+        return QPen(g, 1)
+
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(Qt.GlobalColor.lightGray)
+
+        # 畫背景 polygon
         size = 7
         points = [
-            QPoint(self.width()- 1 * size, self.height()- 1 * size),
-            QPoint(self.width()- 2 * size, self.height()- 1 * size),
-            QPoint(self.width()- 1 * size, self.height()- 2 * size)
+            QPoint(self.width()-size, self.height()-size),
+            QPoint(self.width()-2*size, self.height()-size),
+            QPoint(self.width()-size, self.height()-2*size)
         ]
+        painter.setBrush(Qt.GlobalColor.lightGray)
         painter.drawPolygon(QPolygon(points))
 
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        size_base = 10
+        
+        my_rect = self.geometry()
+        overlap = False
+        if not self.bg_lock:
+            for w in windows:
+                if w is not self and my_rect.intersects(w.geometry()):
+                    overlap = True
+                    break
 
-        rect = self.rect().adjusted(10, 10, -10, -10)
-
-        # 畫陰影
-        shadow_color = QColor(82, 159, 82, self.shadow_alpha)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
-        painter.setBrush(QBrush(shadow_color))
-        painter.setPen(Qt.PenStyle.NoPen)
+        if self.bg_lock or overlap:
+            rect3 = self.rect().adjusted(size_base, size_base, -size_base, -size_base)
+            painter.setBrush(QColor(255, 255, 255, 255))
+            painter.drawRoundedRect(rect3, 3, 3)
+            self.update()
+            return
+            
         offset_x, offset_y = self.shadow_offset
-        shadow_rect = rect.translated(int(offset_x), int(offset_y))
-        painter.drawRoundedRect(shadow_rect, 7, 7)
+        int_x, int_y = int(offset_x), int(offset_y)
+        screen_center = self.ageo.center()
+
+        # rect1
+        rect1 = self.rect().adjusted(
+            max(size_base+int_x, size_base),
+            max(size_base+int_x, size_base),
+            min(-(size_base+int_y), -size_base),
+            min(-(size_base+int_y), -size_base)
+        )
+        rect1.translate(int_x, int_y)
+        painter.setBrush(QColor(159, 255, 159, self.shadow_alpha))
+        painter.drawRoundedRect(rect1, 7, 7)
+        
+        # rect2
+        rect2 = self.rect().adjusted(
+            max(size_base-int_x, size_base),
+            max(size_base-int_x, size_base),
+            min(-(size_base-int_y), -size_base),
+            min(-(size_base-int_y), -size_base)
+        )
+        rect2.translate(-int_x, -int_y)
+        painter.setBrush(QColor(255, 159, 159, self.shadow_alpha))
+        painter.drawRoundedRect(rect2, 7, 7)
+
+        pen1 = self.makeRadialGradient(QPointF(rect1.center()), max(rect1.width(), rect1.height()), self.shadow_alpha)
+        pen1.setStyle(Qt.PenStyle.CustomDashLine)
+        pen1.setDashPattern([7 + abs(offset_x), 7 + abs(offset_y)])
+        painter.setPen(pen1)
+
+        y_left = y_right = 0
+        while y_left < rect1.height()/1.2 and y_right < rect1.height()/1.2:
+            painter.drawLine(rect1.left(), rect1.center().y()+int(y_left),
+                             rect1.right(), rect1.center().y()+int(y_right))
+            painter.drawLine(rect1.left(), rect1.center().y()-int(y_left),
+                             rect1.right(), rect1.center().y()-int(y_right))
+            if self.pos().x() + self.width()/2 < screen_center.x():
+                y_left += self.button_size + abs(offset_x)
+                y_right += self.button_size
+            else:
+                y_left += self.button_size
+                y_right += self.button_size + abs(offset_x)
+
+        pen2 = self.makeRadialGradient(QPointF(rect2.center()), max(rect2.width(), rect2.height()), self.shadow_alpha)
+        pen2.setStyle(Qt.PenStyle.CustomDashLine)
+        pen2.setDashPattern([7 + abs(offset_y), 7 + abs(offset_x)])
+        painter.setPen(pen2)
+
+        y_left = y_right = 0
+        while y_left < rect2.width()/1.2 and y_right < rect2.width()/1.2:
+            painter.drawLine(rect2.center().x()+int(y_left), rect2.top(),
+                             rect2.center().x()+int(y_right), rect2.bottom())
+            painter.drawLine(rect2.center().x()-int(y_left), rect2.top(),
+                             rect2.center().x()-int(y_right), rect2.bottom())
+            if self.pos().y() + self.height()/2 < screen_center.y():
+                y_left += self.button_size + abs(offset_y)
+                y_right += self.button_size
+            else:
+                y_left += self.button_size
+                y_right += self.button_size + abs(offset_y)
 
     def apply_dynamic_shadow(self, focus_win):
         fx, fy = focus_win.pos().x() + focus_win.width()/2, focus_win.pos().y() + focus_win.height()/2
@@ -794,11 +926,11 @@ class JustBrowse(QWidget):
                 dx, dy = w.ageo.center().x() - wx, w.ageo.center().y() -wy
                 
             dist = (dx**2 + dy**2)**0.5
-            alpha_min, alpha_max = 3, 7
+            alpha_min, alpha_max = 7, 13
             alpha = alpha_min + (alpha_max - alpha_min) * (dist / (min(w.ageo.width(),  w.ageo.height())))
             alpha = max(alpha_min, min(alpha_max, alpha))
 
-            w.shadow_offset = (dx*0.02, dy*0.02)
+            w.shadow_offset = (dx*0.02, dy*0.03)
             w.shadow_alpha = int(alpha)
             w.update()   # 觸發重繪
         
@@ -878,6 +1010,32 @@ class JustBrowse(QWidget):
 
         # 確保正常關閉
         super().closeEvent(event)
+        
+class MyWebView(QWebEngineView):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setPage(MyPage(self))   # 在初始化時就綁定自訂 Page
+        
+    def createWindow(self, type):
+        return self   # 強制在同一個 view 打開
+        
+class MyPage(QWebEnginePage):
+    def acceptNavigationRequest(self, url, type, isMainFrame):
+        if type == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
+            modifiers = QApplication.keyboardModifiers()
+            if modifiers & Qt.KeyboardModifier.ControlModifier:
+                # new 出一個新的瀏覽器視窗
+                full_url = url.toString()
+                new_browser = JustBrowse()
+                if new_browser.status_expanded:
+                    new_browser.toggle_status_label()
+                new_browser.url_input.setText(full_url)
+                new_browser.fetch_page(full_url)
+                QTimer.singleShot(200, lambda: new_browser.dock_space())
+                new_browser.show()
+                windows.append(new_browser)  # 保留參考
+                return False  # 阻止原本的 navigation
+        return super().acceptNavigationRequest(url, type, isMainFrame)
 
 app = QApplication(sys.argv)
 

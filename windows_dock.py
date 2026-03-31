@@ -48,7 +48,7 @@ if platform.system() == "Windows":
         exe_name = get_exe_name_from_pid(pid)
         container = QWidget.createWindowContainer(qwindow)
         index = tabs.addTab(container, exe_name)
-        tabs.tabBar().setTabData(tabs.indexOf(container), {"type": "Dock", "pid": pid, "hwnd": hwnd})
+        tabs.tabBar().setTabData(tabs.indexOf(container), {"type": "Dock", "title": exe_name, "pid": pid, "hwnd": hwnd})
         reload_app_list(app_list)
         return index
         
